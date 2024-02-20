@@ -540,7 +540,7 @@ fn add_add_buttons(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                     down: true,
                     up: true,
                     hold_time_ms: 0,
-                    delay_after_ms: 0,
+                    delay_after_ms: 1,
                 }
                 .into(),
             );
@@ -552,13 +552,13 @@ fn add_add_buttons(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                     y: 0,
                     relative: false,
                     _move_time_ms: 0,
-                    delay_after_ms: 0,
+                    delay_after_ms: 1,
                 }
                 .into(),
             )
         }
         if ui.button("Add Delay").clicked() {
-            loopaction.actions.push(DelayAction { delay_ms: 0 }.into())
+            loopaction.actions.push(DelayAction { delay_ms: 1 }.into())
         }
         if ui.button("Add Loop").clicked() {
             loopaction.actions.push(
