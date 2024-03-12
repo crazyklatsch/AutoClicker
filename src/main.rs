@@ -8,9 +8,7 @@ use eframe::egui::{self, Ui};
 use enigo::Enigo;
 use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
-    GlobalHotKeyManager,
-    GlobalHotKeyEvent,
-    HotKeyState,
+    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -46,6 +44,7 @@ struct MyApp {
     hotkey_manager: GlobalHotKeyManager,
     hotkey_start_id: u32,
     hotkey_stop_id: u32,
+    save_name: String,
 }
 
 impl MyApp {
@@ -67,7 +66,6 @@ impl MyApp {
 
 impl Default for MyApp {
     fn default() -> Self {
-        
         let mut mods = Modifiers::SHIFT;
         mods.insert(Modifiers::CONTROL);
         let hotkey_start = HotKey::new(Some(mods), Code::F6);
@@ -75,7 +73,7 @@ impl Default for MyApp {
 
         let myapp = Self {
             root_action: LoopAction {
-                infinite: false,
+                infinite: true,
                 iterations: 1,
                 actions: Vec::new(),
             },
@@ -86,17 +84,17 @@ impl Default for MyApp {
             hotkey_manager: GlobalHotKeyManager::new().unwrap(),
             hotkey_start_id: hotkey_start.id(),
             hotkey_stop_id: hotkey_stop.id(),
+            save_name: String::new(),
         };
-
 
         let res = myapp.hotkey_manager.register(hotkey_start);
         match res {
-            Ok(_) => {println!("Successfully registered hotkey_start")}
+            Ok(_) => println!("Successfully registered hotkey_start"),
             Err(val) => println!("Could not register hotkey_start: {:?}", val),
         }
         let res = myapp.hotkey_manager.register(hotkey_stop);
         match res {
-            Ok(_) => {println!("Successfully registered hotkey_stop"); }
+            Ok(_) => println!("Successfully registered hotkey_stop"),
             Err(val) => println!("Could not register hotkey_stop: {:?}", val),
         }
         myapp
@@ -125,6 +123,51 @@ impl eframe::App for MyApp {
                             ui.label("or 'ctrl+shift+F7'");
                         });
                     });
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button("Load").clicked() {
+                                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                                    let res = self.root_action.load_from_disk(&path);
+                                    match res {
+                                        Ok(_) => {
+                                            self.save_name = String::from(
+                                                path.file_stem().unwrap().to_str().unwrap(),
+                                            )
+                                        }
+                                        Err(val) => println!(
+                                            "Could not read from disk: '{}'",
+                                            val.to_string()
+                                        ),
+                                    }
+                                }
+                            }
+                            if ui.button("Save").clicked() {
+                                let curr_path = std::env::current_dir().unwrap();
+
+                                let path = rfd::FileDialog::new()
+                                    .set_file_name(format!(
+                                        "{}.aclick",
+                                        if self.save_name.is_empty() {
+                                            "save"
+                                        } else {
+                                            self.save_name.as_str()
+                                        }
+                                    ))
+                                    .set_directory(&curr_path)
+                                    .save_file();
+                                if path.is_some() {
+                                    let res = self.root_action.save_to_disk(&path.unwrap());
+                                    match res {
+                                        Ok(_) => (),
+                                        Err(val) => println!(
+                                            "Could not save to disk: '{}'",
+                                            val.to_string()
+                                        ),
+                                    }
+                                }
+                            }
+                        });
+                    });
                 });
             });
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -136,11 +179,9 @@ impl eframe::App for MyApp {
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
             if event.id == self.hotkey_start_id && event.state == HotKeyState::Pressed {
                 self.start_thread.store(true, Ordering::Relaxed);
-            }
-            else if event.id == self.hotkey_stop_id && event.state == HotKeyState::Pressed {
+            } else if event.id == self.hotkey_stop_id && event.state == HotKeyState::Pressed {
                 self.stop_thread.store(true, Ordering::Relaxed);
-            }
-            else {
+            } else {
                 println!("Unhandled Event: {:?}", event);
             }
         }
@@ -563,7 +604,7 @@ fn add_add_buttons(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
         if ui.button("Add Loop").clicked() {
             loopaction.actions.push(
                 LoopAction {
-                    infinite: true,
+                    infinite: false,
                     iterations: 1,
                     actions: Vec::new(),
                 }

@@ -1,6 +1,7 @@
 use enigo::*;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use serde_json;
+use std::{fs::File, io::{Error, Read, Result, Write}, path::Path, sync::{atomic::{AtomicBool, Ordering}, Arc}};
 use std::{thread, time};
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -152,6 +153,31 @@ impl LoopAction {
                 i = i + 1;
             }
         }
+    }
+
+    pub fn save_to_disk<P: AsRef<Path>>(&self, path: &P) -> Result<()> {
+        let mut f = File::create(path.as_ref())?;
+        let buf = serde_json::to_vec(&self)?;
+        f.write_all(&buf[..])?;
+        return Ok(());
+    }
+
+    pub fn load_from_disk<P: AsRef<Path>>(&mut self, path: &P) -> Result<()> {
+        let mut f = File::open(path.as_ref())?;
+        let mut buf = vec![];
+        match f.read_to_end(&mut buf) {
+            Ok(_) => {
+                if let Ok(loopaction) = serde_json::from_slice::<LoopAction>(&buf[..]) {
+                    self.clone_from(&loopaction);
+                }
+                else {
+                    return Err(Error::new(std::io::ErrorKind::Other,"Couldn't deserialize buf into a LoopAction"));
+                }
+            }
+            Err(val) => return Err(val),
+        }
+
+        return Ok(());
     }
 }
 
