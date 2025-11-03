@@ -2,10 +2,11 @@
 
 #[cfg(target_os = "windows")]
 mod actions;
+mod errors;
 
 use crate::actions::*;
 use eframe::egui::{self, Ui};
-use enigo::Enigo;
+use enigo::{Enigo, Settings};
 use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
@@ -50,11 +51,13 @@ struct MyApp {
 impl MyApp {
     fn start_thread(&mut self) {
         self.stop_thread();
-        let mut enigo = Enigo::new();
+        let mut enigo = Enigo::new(&Settings::default()).unwrap();
         let action_copy = self.root_action.clone();
         let stop_signal = self.thread_stop_signal.clone();
         self.thread_handle = thread::spawn(move || {
-            action_copy.execute(&mut enigo, Some(stop_signal));
+            if let Err(err) = action_copy.execute(&mut enigo, Some(stop_signal)) {
+                println!("Execution Thread encountered an error: {}", err);
+            }
         });
     }
 
@@ -177,10 +180,14 @@ impl eframe::App for MyApp {
         });
 
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-            if event.id == self.hotkey_start_id && event.state == HotKeyState::Pressed {
-                self.start_thread.store(true, Ordering::Relaxed);
-            } else if event.id == self.hotkey_stop_id && event.state == HotKeyState::Pressed {
-                self.stop_thread.store(true, Ordering::Relaxed);
+            if event.id == self.hotkey_start_id {
+                if event.state == HotKeyState::Pressed {
+                    self.start_thread.store(true, Ordering::Relaxed);
+                }
+            } else if event.id == self.hotkey_stop_id {
+                if event.state == HotKeyState::Pressed {
+                    self.stop_thread.store(true, Ordering::Relaxed);
+                }
             } else {
                 println!("Unhandled Event: {:?}", event);
             }
@@ -242,7 +249,7 @@ fn add_loop_action(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                                         ui.style_mut().wrap = Some(false);
                                         ui.set_min_width(60.0);
 
-                                        static ALL_KEYS: [enigo::Key; 248] = [
+                                        static ALL_KEYS: [enigo::Key; 247] = [
                                             enigo::Key::Num0,
                                             enigo::Key::Num1,
                                             enigo::Key::Num2,
@@ -467,7 +474,6 @@ fn add_loop_action(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                                             enigo::Key::PageUp,
                                             enigo::Key::Pause,
                                             enigo::Key::Play,
-                                            enigo::Key::Print,
                                             enigo::Key::Processkey,
                                             enigo::Key::RButton,
                                             enigo::Key::RControl,
@@ -481,7 +487,7 @@ fn add_loop_action(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                                             enigo::Key::Separator,
                                             enigo::Key::Shift,
                                             enigo::Key::Sleep,
-                                            enigo::Key::Snapshot,
+                                            enigo::Key::PrintScr,
                                             enigo::Key::Space,
                                             enigo::Key::Subtract,
                                             enigo::Key::Tab,
@@ -494,16 +500,16 @@ fn add_loop_action(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                                             enigo::Key::Zoom,
                                         ];
 
-                                        static ALL_BUTTONS: [enigo::MouseButton; 9] = [
-                                            enigo::MouseButton::Left,
-                                            enigo::MouseButton::Middle,
-                                            enigo::MouseButton::Right,
-                                            enigo::MouseButton::Back,
-                                            enigo::MouseButton::Forward,
-                                            enigo::MouseButton::ScrollUp,
-                                            enigo::MouseButton::ScrollDown,
-                                            enigo::MouseButton::ScrollLeft,
-                                            enigo::MouseButton::ScrollRight,
+                                        static ALL_BUTTONS: [enigo::Button; 9] = [
+                                            enigo::Button::Left,
+                                            enigo::Button::Middle,
+                                            enigo::Button::Right,
+                                            enigo::Button::Back,
+                                            enigo::Button::Forward,
+                                            enigo::Button::ScrollUp,
+                                            enigo::Button::ScrollDown,
+                                            enigo::Button::ScrollLeft,
+                                            enigo::Button::ScrollRight,
                                         ];
 
                                         for button in ALL_BUTTONS {

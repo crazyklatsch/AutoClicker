@@ -1,21 +1,23 @@
 use enigo::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{fs::File, io::{Error, Read, Result, Write}, path::Path, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use std::{fs::File, io::{Error, Read, Write}, path::Path, sync::{atomic::{AtomicBool, Ordering}, Arc}};
 use std::{thread, time};
+
+use crate::errors::AppError;
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum KeyButton {
     KeyboardKey(enigo::Key),
-    MouseButton(enigo::MouseButton),
+    MouseButton(enigo::Button),
 }
 impl From<enigo::Key> for KeyButton {
     fn from(value: enigo::Key) -> Self {
         KeyButton::KeyboardKey(value)
     }
 }
-impl From<enigo::MouseButton> for KeyButton {
-    fn from(value: enigo::MouseButton) -> Self {
+impl From<enigo::Button> for KeyButton {
+    fn from(value: enigo::Button) -> Self {
         KeyButton::MouseButton(value)
     }
 }
@@ -28,17 +30,19 @@ impl std::fmt::Display for KeyButton {
     }
 }
 impl KeyButton {
-    pub fn down(self, enigo: &mut Enigo) {
+    pub fn down(self, enigo: &mut Enigo) -> Result<(), AppError> {
         match self {
-            KeyButton::KeyboardKey(key) => enigo.key_down(key),
-            KeyButton::MouseButton(button) => enigo.mouse_down(button),
+            KeyButton::KeyboardKey(key) => enigo.key(key, Direction::Press)?,
+            KeyButton::MouseButton(button) => enigo.button(button, Direction::Press)?,
         }
+        Ok(())
     }
-    pub fn up(self, enigo: &mut Enigo) {
+    pub fn up(self, enigo: &mut Enigo) -> Result<(), AppError> {
         match self {
-            KeyButton::KeyboardKey(key) => enigo.key_up(key),
-            KeyButton::MouseButton(button) => enigo.mouse_up(button),
+            KeyButton::KeyboardKey(key) => enigo.key(key, Direction::Release)?,
+            KeyButton::MouseButton(button) => enigo.button(button, Direction::Release)?,
         }
+        Ok(())
     }
 }
 
@@ -101,28 +105,30 @@ impl From<LoopAction> for Action {
 }
 
 impl MoveAction {
-    pub fn execute(self, enigo: &mut Enigo) {
+    pub fn execute(self, enigo: &mut Enigo) -> Result<(), AppError> {
         if self.relative {
-            enigo.mouse_move_relative(self.x, self.y);
+            enigo.move_mouse(self.x, self.y, Coordinate::Rel)?;
         } else {
-            enigo.mouse_move_to(self.x, self.y);
+            enigo.move_mouse(self.x, self.y, Coordinate::Abs)?;
         }
         thread::sleep(time::Duration::from_millis(self.delay_after_ms));
+        Ok(())
     }
 }
 
 impl PressAction {
-    pub fn execute(self, enigo: &mut Enigo) {
+    pub fn execute(self, enigo: &mut Enigo) -> Result<(), AppError> {
         if self.down {
-            self.keybutton.down(enigo);
+            self.keybutton.down(enigo)?;
         } else if self.up {
-            self.keybutton.up(enigo);
+            self.keybutton.up(enigo)?;
         }
         if self.down && self.up {
             thread::sleep(time::Duration::from_millis(self.hold_time_ms));
-            self.keybutton.up(enigo);
+            self.keybutton.up(enigo)?;
         }
         thread::sleep(time::Duration::from_millis(self.delay_after_ms));
+        Ok(())
     }
 }
 
@@ -133,18 +139,17 @@ impl DelayAction {
 }
 
 impl LoopAction {
-    pub fn execute(self, enigo: &mut Enigo, stop_execution: Option<Arc<AtomicBool>>) {
+    pub fn execute(self, enigo: &mut Enigo, stop_execution: Option<Arc<AtomicBool>>) -> Result<(), AppError> {
         let mut i = 0;
         let mut terminate = false;
 
         while (i < self.iterations || self.infinite) && !terminate {
             for action in &self.actions {
-                action.clone().execute(enigo, stop_execution.clone());
+                action.clone().execute(enigo, stop_execution.clone())?;
                 if stop_execution
                     .as_ref()
                     .is_some_and(|b| b.load(Ordering::Relaxed))
                 {
-                    // Handle Key downs? (will not be necessary with next enigo release)
                     terminate = true;
                     break;
                 }
@@ -153,16 +158,17 @@ impl LoopAction {
                 i = i + 1;
             }
         }
+        Ok(())
     }
 
-    pub fn save_to_disk<P: AsRef<Path>>(&self, path: &P) -> Result<()> {
+    pub fn save_to_disk<P: AsRef<Path>>(&self, path: &P) -> std::io::Result<()> {
         let mut f = File::create(path.as_ref())?;
         let buf = serde_json::to_vec(&self)?;
         f.write_all(&buf[..])?;
         return Ok(());
     }
 
-    pub fn load_from_disk<P: AsRef<Path>>(&mut self, path: &P) -> Result<()> {
+    pub fn load_from_disk<P: AsRef<Path>>(&mut self, path: &P) -> std::io::Result<()> {
         let mut f = File::open(path.as_ref())?;
         let mut buf = vec![];
         match f.read_to_end(&mut buf) {
@@ -182,12 +188,13 @@ impl LoopAction {
 }
 
 impl Action {
-    fn execute(self, enigo: &mut Enigo, stop_execution: Option<Arc<AtomicBool>>) {
+    fn execute(self, enigo: &mut Enigo, stop_execution: Option<Arc<AtomicBool>>) -> Result<(), AppError> {
         match self {
-            Action::Loop(val) => val.execute(enigo, stop_execution),
-            Action::Move(val) => val.execute(enigo),
-            Action::Press(val) => val.execute(enigo),
+            Action::Loop(val) => val.execute(enigo, stop_execution)?,
+            Action::Move(val) => val.execute(enigo)?,
+            Action::Press(val) => val.execute(enigo)?,
             Action::Delay(val) => val.execute(),
         }
+        Ok(())
     }
 }
