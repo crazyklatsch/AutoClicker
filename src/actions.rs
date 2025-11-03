@@ -1,7 +1,15 @@
 use enigo::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::{fs::File, io::{Error, Read, Write}, path::Path, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use std::{
+    fs::File,
+    io::{Error, Read, Write},
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use std::{thread, time};
 
 use crate::errors::AppError;
@@ -66,7 +74,9 @@ pub struct MoveAction {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct DelayAction {
-    pub delay_ms: u64,
+    pub random: bool,
+    pub delay_ms_min: u64, // used if not random
+    pub delay_ms_max: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,12 +144,22 @@ impl PressAction {
 
 impl DelayAction {
     pub fn execute(self) {
-        thread::sleep(time::Duration::from_millis(self.delay_ms));
+        if !self.random || self.delay_ms_min >= self.delay_ms_max {
+            thread::sleep(time::Duration::from_millis(self.delay_ms_min));
+        } else {
+            thread::sleep(time::Duration::from_millis(fastrand::u64(
+                self.delay_ms_min..self.delay_ms_max,
+            )));
+        }
     }
 }
 
 impl LoopAction {
-    pub fn execute(self, enigo: &mut Enigo, stop_execution: Option<Arc<AtomicBool>>) -> Result<(), AppError> {
+    pub fn execute(
+        self,
+        enigo: &mut Enigo,
+        stop_execution: Option<Arc<AtomicBool>>,
+    ) -> Result<(), AppError> {
         let mut i = 0;
         let mut terminate = false;
 
@@ -175,9 +195,11 @@ impl LoopAction {
             Ok(_) => {
                 if let Ok(loopaction) = serde_json::from_slice::<LoopAction>(&buf[..]) {
                     self.clone_from(&loopaction);
-                }
-                else {
-                    return Err(Error::new(std::io::ErrorKind::Other,"Couldn't deserialize buf into a LoopAction"));
+                } else {
+                    return Err(Error::new(
+                        std::io::ErrorKind::Other,
+                        "Couldn't deserialize buf into a LoopAction",
+                    ));
                 }
             }
             Err(val) => return Err(val),
@@ -188,7 +210,11 @@ impl LoopAction {
 }
 
 impl Action {
-    fn execute(self, enigo: &mut Enigo, stop_execution: Option<Arc<AtomicBool>>) -> Result<(), AppError> {
+    fn execute(
+        self,
+        enigo: &mut Enigo,
+        stop_execution: Option<Arc<AtomicBool>>,
+    ) -> Result<(), AppError> {
         match self {
             Action::Loop(val) => val.execute(enigo, stop_execution)?,
             Action::Move(val) => val.execute(enigo)?,

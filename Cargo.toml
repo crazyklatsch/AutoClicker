@@ -9,6 +9,7 @@ edition = "2021"
 eframe = "0.26.2"
 egui_extras = { version = "0.26.2", features = ["all_loaders"] }
 enigo = { version = "0.6.1", features = ["serde"] }
+fastrand = "2.3.0"
 global-hotkey = "0.4.2"
 rfd = "0.14.0"
 serde = "1.0.196"

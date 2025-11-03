@@ -559,9 +559,32 @@ fn add_loop_action(ui: &mut Ui, loopaction: &mut LoopAction, loop_index: &mut u3
                                 ui.add(egui::DragValue::new(&mut val.delay_after_ms));
                             }
                             Action::Delay(val) => {
-                                ui.label("Delay (ms): ");
-                                ui.add(egui::DragValue::new(&mut val.delay_ms));
-                                ui.add_space(416.0);
+                                ui.checkbox(&mut val.random, "Random");
+                                if val.random {
+                                    ui.label("Delay min (ms): ");
+                                    if ui
+                                        .add(egui::DragValue::new(&mut val.delay_ms_min))
+                                        .changed()
+                                    {
+                                        if val.delay_ms_min > val.delay_ms_max {
+                                            val.delay_ms_min = val.delay_ms_max;
+                                        }
+                                    }
+                                    ui.label("Delay max (ms): ");
+                                    if ui
+                                        .add(egui::DragValue::new(&mut val.delay_ms_max))
+                                        .changed()
+                                    {
+                                        if val.delay_ms_max < val.delay_ms_min {
+                                            val.delay_ms_max = val.delay_ms_min;
+                                        }
+                                    }
+                                    ui.add_space(175.0);
+                                } else {
+                                    ui.label("Delay (ms): ");
+                                    ui.add(egui::DragValue::new(&mut val.delay_ms_min));
+                                    ui.add_space(345.0);
+                                }
                             }
                         }
                         let trash_icon = egui::include_image!("../assets/trash.svg");
@@ -611,7 +634,14 @@ fn add_add_buttons(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
             )
         }
         if ui.button("Add Delay").clicked() {
-            loopaction.actions.push(DelayAction { delay_ms: 1 }.into())
+            loopaction.actions.push(
+                DelayAction {
+                    random: false,
+                    delay_ms_min: 1,
+                    delay_ms_max: 2,
+                }
+                .into(),
+            )
         }
         if ui.button("Add Loop").clicked() {
             loopaction.actions.push(
