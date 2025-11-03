@@ -5,7 +5,7 @@ mod actions;
 mod errors;
 
 use crate::actions::*;
-use eframe::egui::{self, Ui};
+use eframe::egui::{self, Color32, Ui};
 use enigo::{Enigo, Settings};
 use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
@@ -40,6 +40,7 @@ struct MyApp {
     root_action: LoopAction,
     start_thread: Arc<AtomicBool>,
     stop_thread: Arc<AtomicBool>,
+    thread_running: Arc<AtomicBool>,
     thread_handle: JoinHandle<()>,
     thread_stop_signal: Arc<AtomicBool>,
     hotkey_manager: GlobalHotKeyManager,
@@ -54,16 +55,20 @@ impl MyApp {
         let mut enigo = Enigo::new(&Settings::default()).unwrap();
         let action_copy = self.root_action.clone();
         let stop_signal = self.thread_stop_signal.clone();
+        let running = self.thread_running.clone();
         self.thread_handle = thread::spawn(move || {
+            running.store(true, Ordering::Relaxed);
             if let Err(err) = action_copy.execute(&mut enigo, Some(stop_signal)) {
                 println!("Execution Thread encountered an error: {}", err);
             }
+            running.store(false, Ordering::Relaxed);
         });
     }
 
     fn stop_thread(&mut self) {
         self.thread_stop_signal.store(true, Ordering::Relaxed);
         self.thread_stop_signal = Arc::new(AtomicBool::new(false));
+        self.thread_running.store(false, Ordering::Relaxed);
     }
 }
 
@@ -82,6 +87,7 @@ impl Default for MyApp {
             },
             stop_thread: Arc::new(AtomicBool::new(false)),
             start_thread: Arc::new(AtomicBool::new(false)),
+            thread_running: Arc::new(AtomicBool::new(false)),
             thread_stop_signal: Arc::new(AtomicBool::new(false)),
             thread_handle: thread::spawn(|| {}),
             hotkey_manager: GlobalHotKeyManager::new().unwrap(),
@@ -107,7 +113,7 @@ impl Default for MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::new(egui::panel::Side::Left, egui::Id::new("Right side"))
-            .exact_width(100.0)
+            .exact_width(150.0)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.group(|ui| {
@@ -146,7 +152,6 @@ impl eframe::App for MyApp {
                             }
                             if ui.button("Save").clicked() {
                                 let curr_path = std::env::current_dir().unwrap();
-
                                 let path = rfd::FileDialog::new()
                                     .set_file_name(format!(
                                         "{}.aclick",
@@ -159,16 +164,29 @@ impl eframe::App for MyApp {
                                     .set_directory(&curr_path)
                                     .save_file();
                                 if path.is_some() {
-                                    let res = self.root_action.save_to_disk(&path.unwrap());
-                                    match res {
-                                        Ok(_) => (),
-                                        Err(val) => println!(
-                                            "Could not save to disk: '{}'",
-                                            val.to_string()
-                                        ),
+                                    if let Err(err) = self.root_action.save_to_disk(&path.unwrap())
+                                    {
+                                        println!("Could not save to disk: '{}'", err.to_string())
                                     }
                                 }
                             }
+                        });
+                    });
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Running: ");
+                            ui.add_space(10.0);
+                            let circle_color = if self.thread_running.load(Ordering::Relaxed) {
+                                Color32::from_rgb(10, 255, 10)
+                            } else {
+                                Color32::from_rgb(255, 10, 10)
+                            };
+                            ui.painter().circle_filled(
+                                ui.next_widget_position(),
+                                8.0,
+                                circle_color,
+                            );
+                            ui.add_space(10.0);
                         });
                     });
                 });
