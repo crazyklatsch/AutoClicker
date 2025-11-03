@@ -177,6 +177,9 @@ impl LoopAction {
             if !self.infinite {
                 i = i + 1;
             }
+            else if self.actions.is_empty() {
+                break;
+            }
         }
         Ok(())
     }
