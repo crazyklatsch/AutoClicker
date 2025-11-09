@@ -261,12 +261,12 @@ fn add_loop_action(ui: &mut Ui, loopaction: &mut LoopAction, loop_index: &mut u3
                                 ui.add_space(10.0);
                                 ui.label("y: ");
                                 ui.add(egui::DragValue::new(&mut val.y));
-                                ui.add_space(10.0);
+                                ui.add_space(5.0);
                                 ui.checkbox(&mut val.relative, "Relative");
-                                ui.add_space(159.0);
-                                // ui.label("Move-Time (ms): ");
-                                // ui.add(egui::DragValue::new(&mut val.move_time_ms));
-                                // ui.add_space(10.0);
+                                ui.add_space(5.0);
+                                ui.label("Move-Time (ms): ");
+                                ui.add(egui::DragValue::new(&mut val.move_time_ms));
+                                ui.add_space(7.0);
                                 ui.label("Delay after (ms): ");
                                 ui.add(egui::DragValue::new(&mut val.delay_after_ms));
                             }
@@ -656,7 +656,7 @@ fn add_add_buttons(ui: &mut Ui, depth: u16, loopaction: &mut LoopAction) {
                     x: 0,
                     y: 0,
                     relative: false,
-                    _move_time_ms: 0,
+                    move_time_ms: 0,
                     delay_after_ms: 1,
                 }
                 .into(),

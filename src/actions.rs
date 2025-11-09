@@ -68,7 +68,7 @@ pub struct MoveAction {
     pub x: i32,
     pub y: i32,
     pub relative: bool,
-    pub _move_time_ms: u64,
+    pub move_time_ms: u64,
     pub delay_after_ms: u64,
 }
 
@@ -116,11 +116,50 @@ impl From<LoopAction> for Action {
 
 impl MoveAction {
     pub fn execute(self, enigo: &mut Enigo) -> Result<(), AppError> {
-        if self.relative {
-            enigo.move_mouse(self.x, self.y, Coordinate::Rel)?;
+        if self.move_time_ms == 0 {
+            if self.relative {
+                enigo.move_mouse(self.x, self.y, Coordinate::Rel)?;
+            } else {
+                enigo.move_mouse(self.x, self.y, Coordinate::Abs)?;
+            }
         } else {
-            enigo.move_mouse(self.x, self.y, Coordinate::Abs)?;
+            let timestep_ms = 3;
+            let mut x_rel = self.x;
+            let mut y_rel = self.y;
+
+            if !self.relative {
+                let pos = enigo.location()?;
+                x_rel = self.x - pos.0;
+                y_rel = self.y - pos.1;
+            }
+
+            let mut time_passed_ms: u64 = 0;
+            let mut x_last_cycle = 0;
+            let mut y_last_cycle = 0;
+
+            loop {
+                let factor = time_passed_ms as f64 / self.move_time_ms as f64;
+                let x = (x_rel as f64 * factor).floor() as i32;
+                let y = (y_rel as f64 * factor).floor() as i32;
+
+                enigo.move_mouse(x - x_last_cycle, y - y_last_cycle, Coordinate::Rel)?;
+
+                let sleep_time = if time_passed_ms + timestep_ms < self.move_time_ms {
+                    timestep_ms
+                } else {
+                    self.move_time_ms - time_passed_ms
+                };
+
+                if time_passed_ms >= self.move_time_ms {
+                    break;
+                }
+                thread::sleep(time::Duration::from_millis(sleep_time));
+                time_passed_ms += sleep_time;
+                x_last_cycle = x;
+                y_last_cycle = y;
+            }
         }
+
         thread::sleep(time::Duration::from_millis(self.delay_after_ms));
         Ok(())
     }
@@ -176,8 +215,7 @@ impl LoopAction {
             }
             if !self.infinite {
                 i = i + 1;
-            }
-            else if self.actions.is_empty() {
+            } else if self.actions.is_empty() {
                 break;
             }
         }
