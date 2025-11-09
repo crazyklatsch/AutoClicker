@@ -13,6 +13,7 @@ use global_hotkey::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use std::thread;
 use std::thread::JoinHandle;
 
@@ -31,7 +32,7 @@ fn main() -> Result<(), eframe::Error> {
             // This gives us image support:
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
-            Box::<MyApp>::default()
+            Box::new(MyApp::new(&cc.egui_ctx))
         }),
     )
 }
@@ -44,8 +45,6 @@ struct MyApp {
     thread_handle: JoinHandle<()>,
     thread_stop_signal: Arc<AtomicBool>,
     hotkey_manager: GlobalHotKeyManager,
-    hotkey_start_id: u32,
-    hotkey_stop_id: u32,
     save_name: String,
 }
 
@@ -72,8 +71,8 @@ impl MyApp {
     }
 }
 
-impl Default for MyApp {
-    fn default() -> Self {
+impl MyApp {
+    fn new(ctx: &egui::Context) -> Self {
         let mut mods = Modifiers::SHIFT;
         mods.insert(Modifiers::CONTROL);
         let hotkey_start = HotKey::new(Some(mods), Code::F6);
@@ -91,8 +90,6 @@ impl Default for MyApp {
             thread_stop_signal: Arc::new(AtomicBool::new(false)),
             thread_handle: thread::spawn(|| {}),
             hotkey_manager: GlobalHotKeyManager::new().unwrap(),
-            hotkey_start_id: hotkey_start.id(),
-            hotkey_stop_id: hotkey_stop.id(),
             save_name: String::new(),
         };
 
@@ -106,6 +103,31 @@ impl Default for MyApp {
             Ok(_) => println!("Successfully registered hotkey_stop"),
             Err(val) => println!("Could not register hotkey_stop: {:?}", val),
         }
+
+        let ctx_clone = ctx.clone();
+        let start_thread = myapp.start_thread.clone();
+        let stop_thread = myapp.stop_thread.clone();
+        let hotkey_start_id = hotkey_start.id();
+        let hotkey_stop_id = hotkey_stop.id();
+        thread::spawn(move || loop {
+            if let Ok(event) = GlobalHotKeyEvent::receiver().recv() {
+                if event.id == hotkey_start_id {
+                    if event.state == HotKeyState::Pressed {
+                        start_thread.store(true, Ordering::SeqCst);
+                    }
+                } else if event.id == hotkey_stop_id {
+                    if event.state == HotKeyState::Pressed {
+                        stop_thread.store(true, Ordering::SeqCst);
+                    }
+                } else {
+                    println!("Unhandled Event: {:?}", event);
+                }
+                ctx_clone.request_repaint();
+                // just to be sure that the signals arrived
+                ctx_clone.request_repaint_after(Duration::from_millis(5));
+            }
+        });
+
         myapp
     }
 }
@@ -119,7 +141,7 @@ impl eframe::App for MyApp {
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
                             if ui.button("Start").clicked() {
-                                self.start_thread.store(true, Ordering::Relaxed);
+                                self.start_thread.store(true, Ordering::SeqCst);
                             }
                             ui.label("or 'ctrl+shift+F6'");
                         });
@@ -127,7 +149,7 @@ impl eframe::App for MyApp {
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
                             if ui.button("Stop").clicked() {
-                                self.stop_thread.store(true, Ordering::Relaxed);
+                                self.stop_thread.store(true, Ordering::SeqCst);
                             }
                             ui.label("or 'ctrl+shift+F7'");
                         });
@@ -198,31 +220,14 @@ impl eframe::App for MyApp {
             });
         });
 
-        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-            if event.id == self.hotkey_start_id {
-                if event.state == HotKeyState::Pressed {
-                    self.start_thread.store(true, Ordering::Relaxed);
-                }
-            } else if event.id == self.hotkey_stop_id {
-                if event.state == HotKeyState::Pressed {
-                    self.stop_thread.store(true, Ordering::Relaxed);
-                }
-            } else {
-                println!("Unhandled Event: {:?}", event);
-            }
-        }
-
-        if self.start_thread.load(Ordering::Relaxed) {
+        if self.start_thread.load(Ordering::SeqCst) {
             self.start_thread();
-            self.start_thread.store(false, Ordering::Relaxed);
+            self.start_thread.store(false, Ordering::SeqCst);
         }
-        if self.stop_thread.load(Ordering::Relaxed) {
+        if self.stop_thread.load(Ordering::SeqCst) {
             self.stop_thread();
-            self.stop_thread.store(false, Ordering::Relaxed);
+            self.stop_thread.store(false, Ordering::SeqCst);
         }
-
-        // Continuous mode
-        ctx.request_repaint();
     }
 }
 
