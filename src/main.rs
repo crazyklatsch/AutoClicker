@@ -49,25 +49,27 @@ struct MyApp {
 }
 
 impl MyApp {
-    fn start_thread(&mut self) {
+    fn start_thread(&mut self, ctx: &egui::Context) {
         self.stop_thread();
         let mut enigo = Enigo::new(&Settings::default()).unwrap();
         let action_copy = self.root_action.clone();
         let stop_signal = self.thread_stop_signal.clone();
         let running = self.thread_running.clone();
+        let ctx_clone = ctx.clone();
         self.thread_handle = thread::spawn(move || {
-            running.store(true, Ordering::Relaxed);
+            running.store(true, Ordering::SeqCst);
             if let Err(err) = action_copy.execute(&mut enigo, Some(stop_signal)) {
                 println!("Execution Thread encountered an error: {}", err);
             }
-            running.store(false, Ordering::Relaxed);
+            running.store(false, Ordering::SeqCst);
+            ctx_clone.request_repaint();
         });
     }
 
     fn stop_thread(&mut self) {
         self.thread_stop_signal.store(true, Ordering::Relaxed);
         self.thread_stop_signal = Arc::new(AtomicBool::new(false));
-        self.thread_running.store(false, Ordering::Relaxed);
+        self.thread_running.store(false, Ordering::SeqCst);
     }
 }
 
@@ -198,7 +200,7 @@ impl eframe::App for MyApp {
                         ui.horizontal(|ui| {
                             ui.label("Running: ");
                             ui.add_space(10.0);
-                            let circle_color = if self.thread_running.load(Ordering::Relaxed) {
+                            let circle_color = if self.thread_running.load(Ordering::SeqCst) {
                                 Color32::from_rgb(10, 255, 10)
                             } else {
                                 Color32::from_rgb(255, 10, 10)
@@ -221,7 +223,7 @@ impl eframe::App for MyApp {
         });
 
         if self.start_thread.load(Ordering::SeqCst) {
-            self.start_thread();
+            self.start_thread(ctx);
             self.start_thread.store(false, Ordering::SeqCst);
         }
         if self.stop_thread.load(Ordering::SeqCst) {
