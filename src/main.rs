@@ -577,7 +577,11 @@ fn add_loop_action(ui: &mut Ui, loopaction: &mut LoopAction, loop_index: &mut u3
                                 ui.add(egui::DragValue::new(&mut val.delay_after_ms));
                             }
                             Action::Delay(val) => {
-                                ui.checkbox(&mut val.random, "Random");
+                                if ui.checkbox(&mut val.random, "Random").clicked() {
+                                    if val.delay_ms_max < val.delay_ms_min {
+                                        val.delay_ms_max = val.delay_ms_min;
+                                    }
+                                }
                                 if val.random {
                                     ui.label("Delay min (ms): ");
                                     if ui
